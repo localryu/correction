@@ -13,29 +13,25 @@
 #include <pcl/filters/passthrough.h>
 
 
-#include "velodyne_height_map/heightmap.h"
+//#include "velodyne_height_map/heightmap.h"
 
 using namespace std;
 
 typedef pcl::PointCloud<pcl::PointXYZ> PointCloud;
-
-//typedef Correction_pointcloud::PointXYZIR VPoint;
-//typedef pcl::PointCloud<VPoint> VPointCloud;
-
+#define REF 1;
 
 class Correction
 {
 public:
 	Correction();
 	void lidarCallback(const PointCloud::ConstPtr& cloud);
-	void icp_lo(const PointCloud::ConstPtr& cloud);
-	void filter(const PointCloud::ConstPtr& cloud);
+	void icp_lo(const PointCloud::Ptr& cloud);
 	void extract(const PointCloud::ConstPtr& cloud);
+	void get_ref();
 
 
 private:
 	ros::NodeHandle nh_;
-//	PointCloud::ConstPtr cloud;
 	PointCloud cloud;
 	PointCloud cloud_c;
 	PointCloud::Ptr cloud_filtered;
@@ -45,8 +41,24 @@ private:
 	float mean_y[10] = {0.0,};
 
 	ros::Subscriber Velodyne_scan;
-  ros::Publisher filtered_cloud;
-	ros::Publisher pub;
+  	ros::Publisher filtered_cloud;
+	ros::Publisher ref_center_cloud;
+	ros::Publisher cur_center_cloud;
+	
+	PointCloud cloud;
+	PointCloud cloud_c;
+	PointCloud::Ptr cloud_filtered;
+	PointCloud::Ptr cloud_ref;
+	PointCloud::Ptr cloud_cur;
+
+	int seg[10][50] = {{0,}};
+	double threshold;
+	float center_o[10][3] = {{0.0,}};
+	float center[10][3] = {{0.0,}};
+	float ref[10][3] = {{0.0,}};
+	int refer;
+	int num;
+
 };
 
 
@@ -61,47 +73,77 @@ Correction::Correction()
 	Velodyne_scan = nh_.subscribe("/merged_velodyne", 10,
                                   &Correction::lidarCallback, this,
                                   ros::TransportHints().tcpNoDelay(true));
+	
+	cloud_filtered = PointCloud::Ptr(new PointCloud);
+	cloud_ref = PointCloud::Ptr(new PointCloud);
+	cloud_cur = PointCloud::Ptr(new PointCloud);
+	threshold = 5;
+	refer = 0;
+	num = 0;
 
 }
 
 void Correction::lidarCallback(const PointCloud::ConstPtr& cloud)
 {
 
+	num = 0;
 	extract(cloud);
+
+#ifdef REF
+	if(refer == 100){
+		get_ref();
+		refer++;
+	}else if(refer < 100){
+		refer++;
+	}
+	//cout << "count" << refer << endl;
+#endif
+
+	icp_lo(cloud_cur);
+
 
 }
 
 
 void Correction::icp_lo(const PointCloud::ConstPtr& cloud)
 {
-	//filtered_scan.publish(cloud_filtered);
+	cur_center_cloud.publish(*cloud_cur);
 
 }
-/*
-void Correction::filter(const PointCloud::ConstPtr& cloud){
-	PointCloud::Ptr cloud_filtered (new PointCloud);
 
-	pcl::PassThrough<pcl::PointXYZ> pass;
-  pass.setInputCloud (cloud);
-  pass.setFilterFieldName ("z");
-  pass.setFilterLimits (4.5, 5.5);
-  //pass.setFilterLimitsNegative (true);
-  pass.filter (*cloud_filtered);
+void Correction::get_ref(){
 
-	filtered_cloud.publish(*cloud_filtered);
-}*/
+	int cloud_width = 0;
+	for(int i = 0; i < 10; i++){
+		ref[i][0] = center_o[i][0];
+		ref[i][1] = center_o[i][1];
+		ref[i][2] = center_o[i][2];
+		if(center_o[i][0] != 0){
+			cloud_width++;
+		}
+	}
+	cloud_ref->header.frame_id = "base_footprint";
+	cloud_ref->width = cloud_width;
+	cloud_ref->height = 1;
+	cloud_ref->points.resize(cloud_ref->width * cloud_ref->height);
+
+	for (size_t j = 0; j < cloud_ref->points.size(); ++j){
+		cloud_ref->points[j].x = ref[j][0];
+		cloud_ref->points[j].y = ref[j][1];
+		cloud_ref->points[j].z = ref[j][2];
+	}
+	ref_center_cloud.publish(*cloud_ref);
+}
 
 void Correction::extract(const PointCloud::ConstPtr& cloud)
 {
 	//filtering
-	PointCloud::Ptr cloud_filtered (new PointCloud);
-
 	pcl::PassThrough<pcl::PointXYZ> pass;
-  pass.setInputCloud (cloud);
-  pass.setFilterFieldName ("z");
-  pass.setFilterLimits (4.5, 5.0);
-  //pass.setFilterLimitsNegative (true);
-  pass.filter (*cloud_filtered);
+  	pass.setInputCloud (cloud);
+  	pass.setFilterFieldName ("z");
+  	pass.setFilterLimits (4.3, 5.5);
+  	//pass.setFilterLimitsNegative (true);
+  	pass.filter (*cloud_filtered);
 
 	filtered_cloud.publish(*cloud_filtered);
 
@@ -112,11 +154,11 @@ void Correction::extract(const PointCloud::ConstPtr& cloud)
 	int cn[20] = {0,};
 	int np = 0;
 	int chk = 0;
+
 	cloud_c = PointCloud(*cloud_filtered);
 
-  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustred (new pcl::PointCloud<pcl::PointXYZ>);
-	std::cout << "PointCloud has: " << cloud_c.points.size () << " data points." << std::endl;
-
+ 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_clustred (new pcl::PointCloud<pcl::PointXYZ>);
+	cout << "PointCloud has: " << cloud_c.points.size () << " data points." << endl;
 
 	int n = cloud_c.points.size ();
 	for(int ind = 1; ind < n+1; ind++){
@@ -127,7 +169,7 @@ void Correction::extract(const PointCloud::ConstPtr& cloud)
 		int x = 0;
 		chk = 0;
 		for(int j = 0; j < cloud_c.points.size (); j++){
-			d = sqrt(pow((cloud_c.points[i].x - cloud_c.points[j].x),2.0) + pow((cloud_c.points[i].y - cloud_c.points[j].y),2.0));
+			d = pow((pow((cloud_c.points[i].x - cloud_c.points[j].x),2.0) + pow((cloud_c.points[i].y - cloud_c.points[j].y),2.0) + pow((cloud_c.points[i].z - cloud_c.points[j].z),2.0)),1.0/3.0);
 			if(d < threshold){
 				if(q[i] != 0){
 					q[i] = 0;
@@ -155,23 +197,37 @@ void Correction::extract(const PointCloud::ConstPtr& cloud)
 		}
 	}
 
-		for(int l = 0 ; l < 10; l++){
-			int num , val = 0;
-			float sum_x = 0.0, sum_y = 0.0;
-			mean_x[l] = 0.0;
-			mean_y[l] = 0.0;
-			for(int h = 0; h < cn[l]; h++){
-				val = seg[l][h];
-				sum_x = sum_x + cloud_c.points[val].x;
-				sum_y = sum_y + cloud_c.points[val].y;
-			}
-			mean_x[l] = sum_x/cn[l];
-			mean_y[l] = sum_y/cn[l];
-			cout << "seg : " << l << "x : "<< mean_x[l] << "y : " << mean_y[l] << endl;
+	for(int l = 0 ; l < 10; l++){
+		int val = 0;
+		float sum_x = 0.0, sum_y = 0.0, sum_z = 0.0;
+		center_o[l][0] = 0.0;
+		center_o[l][1] = 0.0;
+		center_o[l][2] = 0.0;
+		if(seg[l][0] != 0){
+		num++;
 		}
+		for(int h = 0; h < cn[l]; h++){
+			val = seg[l][h];
+			sum_x = sum_x + cloud_c.points[val].x;
+			sum_y = sum_y + cloud_c.points[val].y;
+			sum_z = sum_z + cloud_c.points[val].z;
+		}
+		center_o[l][0] = sum_x/cn[l];
+		center_o[l][1] = sum_y/cn[l];
+		center_o[l][2] = sum_z/cn[l];
+		//cout << "seg : " << l << "x : "<< center_o[l][0] << "y : " << center_o[l][1] << endl;
+	}
 
+	cloud_cur->header.frame_id = "base_footprint";
+	cloud_cur->width = num;
+	cloud_cur->height = 1;
+	cloud_cur->points.resize(cloud_cur->width * cloud_cur->height);
+	for (size_t j = 0; j < cloud_cur->points.size(); ++j){
+		cloud_cur->points[j].x = center_o[j][0];
+		cloud_cur->points[j].y = center_o[j][1];
+		cloud_cur->points[j].z = center_o[j][2];
+	}
 }
-
 
 
 int main(int argc, char** argv)
