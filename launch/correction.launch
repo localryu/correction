@@ -1,0 +1,12 @@
+<launch>
+
+  <param name="use_sim_time" value="false" />
+
+  <node pkg="correction" type="correction" name="correction" output="screen">
+    <param name="disthreshold" value="10"/>
+    <param name="iterthreshold" value="200"/>
+  </node>
+
+  <node pkg="rosbag" type="play" name="player" output="screen" args="--clock /home/ryu/catkin_ws/src/correction/bag/ref.bag"/>
+
+</launch>

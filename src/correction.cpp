@@ -52,9 +52,8 @@ private:
 	PointCloud::Ptr cloud_ref;
 	PointCloud::Ptr cloud_icp_ref;
 
-
-
-
+	int distance_thershold_;
+	int iteration_thershold_;
 	int refer;
 	int chk_once;
 	float long_t;
@@ -92,6 +91,8 @@ Correction::Correction()
 	chk_once = 0;
 	long_t = 0.0;
 
+	nh_.param("disthershold", distance_thershold_, 10);
+	nh_.param("iterthershold", iteration_thershold_ , 200);
 }
 
 void Correction::refCallback(const PointCloud::ConstPtr& cloud_icp_ref){
@@ -144,9 +145,9 @@ void Correction::icp_lo(const PointCloud::Ptr& cloud_cur)
 	icp.setInputTarget(cloud_target);
 
 	// Set the max correspondence distance to 5cm (e.g., correspondences with higher distances will be ignored)
-	icp.setMaxCorrespondenceDistance (10);
+	icp.setMaxCorrespondenceDistance (distance_thershold_);
 	// Set the maximum number of iterations (criterion 1)
-	icp.setMaximumIterations (200);
+	icp.setMaximumIterations (iteration_thershold_);
 	// Set the transformation epsilon (criterion 2)
 	icp.setTransformationEpsilon (1e-8);
 	// Set the euclidean distance difference epsilon (criterion 3)
