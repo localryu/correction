@@ -7,6 +7,9 @@
     <param name="iterthreshold" value="200"/>
   </node>
 
+  <!--<include file="$(find lcm_to_ros)/launch/eurecar_gga.launch"/>-->
+  <include file="$(find lcm_to_ros)/launch/hyundai_mission.launch"/>
+
   <node pkg="rosbag" type="play" name="player" output="screen" args="--clock /home/ryu/catkin_ws/src/correction/bag/ref.bag"/>
 
 </launch>
