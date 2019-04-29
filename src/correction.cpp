@@ -35,6 +35,7 @@ typedef pcl::PointCloud<pcl::PointXYZ> PointCloud;
 #define MAKE_REF 0
 #define DO_ICP 1
 
+#define PI 3.141592
 class Correction
 {
 public:
@@ -178,9 +179,11 @@ void Correction::lidarCallback(const PointCloud::ConstPtr& cloud)
 
 #if DO_ICP==1
 	icp_lo(cloud_cur);
-#endif
+
+	alpha_ref_ = (27.6 * (PI/180)) - alpha_ref_;
 	error_long = long_tm * cos(alpha_ref_);
 	ROS_INFO("after : %f", error_long);
+#endif
 }
 
 void Correction::icp_lo(const PointCloud::Ptr& cloud_cur)
@@ -203,13 +206,16 @@ void Correction::icp_lo(const PointCloud::Ptr& cloud_cur)
 	icp.align (*cloud_align);
 
 	ROS_INFO("------------------------------");
-	// Obtain the transformation that aligned cloud_source to cloud_source_registered
-	Eigen::Matrix4f transformation = icp.getFinalTransformation();
 
-	long_tm = transformation(0,3)*(-1);
-	ROS_INFO("before : %f",long_tm);
-
-
+	ROS_INFO("score : %f\n",icp.getFitnessScore());
+	if (icp.hasConverged() && icp.getFitnessScore() <= 100){
+		Eigen::Matrix4f transformation = icp.getFinalTransformation();
+		long_tm = transformation(0,3)*(-1);
+		ROS_INFO("before : %f",long_tm);
+	} else{
+		long_tm = 0.0;
+		ROS_INFO("before : %f",long_tm);
+	}
 	cur_center_cloud.publish(*cloud_cur);
 	cloud_align_.publish(*cloud_align);
 }
@@ -235,12 +241,19 @@ void Correction::get_ref(const PointCloud::Ptr& cloud_filtered)
 void Correction::extract(const PointCloud::ConstPtr& cloud)
 {
 	//filtering
-	pcl::PassThrough<pcl::PointXYZ> pass;
-  pass.setInputCloud (cloud);
-  pass.setFilterFieldName ("z");
-  pass.setFilterLimits (4.3, 5.5);
+	pcl::PassThrough<pcl::PointXYZ> passx;
+  passx.setInputCloud (cloud);
+  passx.setFilterFieldName ("x");
+  passx.setFilterLimits (-50.0, 70.0);
   //pass.setFilterLimitsNegative (true);
-  pass.filter (*cloud_filtered);
+  passx.filter (*cloud_filtered);
+
+	pcl::PassThrough<pcl::PointXYZ> passz;
+	passz.setInputCloud (cloud_filtered);
+	passz.setFilterFieldName ("z");
+	passz.setFilterLimits (4.5, 5.5);
+	//pass.setFilterLimitsNegative (true);
+	passz.filter (*cloud_filtered);
 
 	*cloud_cur = PointCloud(*cloud_filtered);
 	filtered_cloud.publish(*cloud_filtered);
