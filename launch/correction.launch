@@ -3,13 +3,12 @@
   <param name="use_sim_time" value="false" />
 
   <node pkg="correction" type="correction" name="correction" output="screen">
-    <param name="disthreshold" value="10"/>
-    <param name="iterthreshold" value="200"/>
+    <param name="disthreshold" value="0.005"/>
+    <param name="iterthreshold" value="100"/>
   </node>
 
   <!--<include file="$(find lcm_to_ros)/launch/eurecar_gga.launch"/>-->
   <include file="$(find lcm_to_ros)/launch/hyundai_mission.launch"/>
 
-  <node pkg="rosbag" type="play" name="player" output="screen" args="--clock /home/ryu/catkin_ws/src/correction/bag/ref.bag"/>
-
+  <node pkg="rosbag" type="play" name="player" output="screen" args="--clock /home/ryu/catkin_ws/src/bag/ref.bag"/>
 </launch>
