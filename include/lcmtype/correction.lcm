@@ -1,0 +1,8 @@
+package eurecar;
+
+struct correction
+{
+	int64_t timestamp;
+	double	long_err;
+	double 	lat_err;
+}

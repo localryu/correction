@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(correction)
 
+find_package(lcm REQUIRED)
+
 find_package(catkin REQUIRED 
              cmake_modules
              COMPONENTS
@@ -32,4 +34,5 @@ target_link_libraries(correction
                       ${catkin_LIBRARIES}
                       ${Boost_LIBRARIES}
                       ${PCL_LIBRARIES}
-		      ${lcm_to_ros_LIBRARIES}) 
+		      ${lcm_to_ros_LIBRARIES}
+			lcm) 

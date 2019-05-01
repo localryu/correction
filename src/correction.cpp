@@ -3,13 +3,17 @@
 #include <vector>
 #include <math.h>
 #include <cmath>
+#include <time.h>
 #include <std_msgs/Float64.h>
+#include <std_msgs/String.h>
 
+#include <lcm/lcm.h>
 #include <lcm/lcm-cpp.hpp>
 #include "lcm_to_ros/gga_t.h"
 #include "lcm_to_ros/hyundai_mission.h"
 #include "eurecar/gga_t.hpp"
 #include "eurecar/hyundai_mission.hpp"
+#include "lcmtype/eurecar/correction.hpp"
 
 #include <pcl_ros/point_cloud.h>
 #include <pcl/ModelCoefficients.h>
@@ -81,10 +85,12 @@ private:
 	int refer;
 	int chk_once;
 	float long_tm;
+	float lat_tm;
 	float alpha_ref;
 	float alpha_ref_;
 	float beta;
 	float error_long;
+	float error_lat;
 };
 
 Correction::Correction()
@@ -125,9 +131,11 @@ Correction::Correction()
 	refer = 0;
 	chk_once = 0;
 	long_tm = 0.0;
+	lat_tm = 0.0;
 	alpha_ref_ = 0.0;
 	beta = 0.0;
 	error_long = 0.0;
+	error_lat = 0.0;
 	nh_.param("disthershold", distance_thershold_, 10);
 	nh_.param("iterthershold", iteration_thershold_ , 200);
 }
@@ -165,6 +173,7 @@ void Correction::refCallback(const PointCloud::ConstPtr& cloud_icp_ref)
 
 void Correction::lidarCallback(const PointCloud::ConstPtr& cloud)
 {
+
 	extract(cloud);
 
 #if MAKE_REF==1
@@ -178,11 +187,23 @@ void Correction::lidarCallback(const PointCloud::ConstPtr& cloud)
 #endif
 
 #if DO_ICP==1
+	lcm::LCM lcm;
+	if(!lcm.good())
+		return;
+
+	eurecar::correction cor;
+	cor.timestamp = 0;
 	icp_lo(cloud_cur);
 
 	alpha_ref_ = (27.6 * (PI/180)) - alpha_ref_;
 	error_long = long_tm * cos(alpha_ref_);
+	cor.long_err = error_long;
+	error_lat = lat_tm * cos(alpha_ref_);
+	cor.lat_err = error_lat;
 	ROS_INFO("after : %f", error_long);
+	ROS_INFO("after : %f", error_lat);
+
+	lcm.publish("COR", &cor);
 #endif
 }
 
@@ -211,10 +232,12 @@ void Correction::icp_lo(const PointCloud::Ptr& cloud_cur)
 	if (icp.hasConverged() && icp.getFitnessScore() <= 100){
 		Eigen::Matrix4f transformation = icp.getFinalTransformation();
 		long_tm = transformation(0,3)*(-1);
-		ROS_INFO("before : %f",long_tm);
+		lat_tm = transformation(1,3)*(-1); //right side positive
+		//ROS_INFO("before : %f",long_tm);
 	} else{
 		long_tm = 0.0;
-		ROS_INFO("before : %f",long_tm);
+		lat_tm = 0.0;
+		//ROS_INFO("before : %f",long_tm);
 	}
 	cur_center_cloud.publish(*cloud_cur);
 	cloud_align_.publish(*cloud_align);
@@ -263,7 +286,12 @@ int main(int argc, char** argv)
 {
 	ros::init(argc, argv, "correction");
 	Correction Correction;
-	ros::spin();
+
+	ros::Rate rate(10);
+	while(ros::ok()){
+		ros::spinOnce();
+		rate.sleep();
+	}
 
 	return 0;
 }
